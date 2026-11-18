@@ -218,6 +218,8 @@ async function copyText(text) {
   catch { openModal(`<h2>Copy this</h2><textarea class="big" id="copyFallback" readonly>${esc(text)}</textarea><div class="row"><button data-close>Close</button></div>`); const ta = $("#copyFallback"); ta.focus(); ta.select(); }
 }
 function download(name, text, type = "text/plain") {
+  let embedded = true; try { embedded = window.self !== window.top; } catch {}
+  if (embedded) { copyText(text); return; } // embedded viewers block file saves; copy instead
   try {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type }));
