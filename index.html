@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GTA VI Clip Engine</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sticky top bar + tab strip, one working panel per tab; tables scroll inside their own box. Night-in-Leonida palette: deep indigo ground, sunset pink for action, ocean teal for money. */
+:root {
+  --bg: #f5f3fa; --panel: #ffffff; --panel2: #efecf7; --line: #dcd6ec;
+  --fg: #1b1733; --muted: #5f5880; --pink: #d0176a; --teal: #0b8f84; --sun: #b25b00;
+  --good: #13854b; --warn: #a65d00; --bad: #c62828; --chipbg: #e8e4f4;
+  --f-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e0b1c; --panel: #17132b; --panel2: #1f1a39; --line: #2f2954;
+  --fg: #ece9f8; --muted: #9d96bf; --pink: #ff4d97; --teal: #2ad8c9; --sun: #ffb24d;
+  --good: #46e08f; --warn: #ffb24d; --bad: #ff6b6b; --chipbg: #2a2449; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e0b1c; --panel: #17132b; --panel2: #1f1a39; --line: #2f2954;
+  --fg: #ece9f8; --muted: #9d96bf; --pink: #ff4d97; --teal: #2ad8c9; --sun: #ffb24d;
+  --good: #46e08f; --warn: #ffb24d; --bad: #ff6b6b; --chipbg: #2a2449; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; flex-direction: column; gap: 8px; padding-block: 12px 0; }
+.brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.brand h1 { font: 800 18px/1.1 var(--f-display); margin: 0; letter-spacing: .01em; }
+.brand h1 span { color: var(--pink); }
+.countdown { font: 600 12px var(--f-mono); color: var(--teal); background: var(--chipbg); padding: 4px 10px; border-radius: 999px; }
+nav.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs a { flex: none; padding: 8px 12px; color: var(--muted); text-decoration: none; font-weight: 600; border-bottom: 2px solid transparent; white-space: nowrap; }
+nav.tabs a.on { color: var(--fg); border-bottom-color: var(--pink); }
+nav.tabs a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+main.wrap { padding-block: 20px 60px; display: flex; flex-direction: column; gap: 20px; }
+
+h2 { font: 700 20px/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+h3 { font: 700 13px/1.3 var(--f-body); margin: 0; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.spread { justify-content: space-between; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.grid2 > * { min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.kpi b { font: 700 22px var(--f-mono); font-variant-numeric: tabular-nums; }
+.kpi .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.kpi .bar i { display: block; height: 100%; background: var(--teal); }
+
+button, .btn { font: 600 13px var(--f-body); border: 1px solid var(--line); background: var(--panel2); color: var(--fg); padding: 7px 12px; border-radius: 7px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--pink); border-color: var(--pink); color: #fff; }
+button.ghost { background: transparent; }
+button.danger { color: var(--bad); }
+button.sm { padding: 3px 8px; font-size: 12px; }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--panel2); position: sticky; top: 0; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+td.wrap { white-space: normal; min-width: 220px; max-width: 360px; }
+tr:last-child td { border-bottom: 0; }
+tr.ex td:first-child { box-shadow: inset 3px 0 0 var(--sun); }
+.empty { padding: 24px; text-align: center; color: var(--muted); }
+
+.chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font: 600 11px var(--f-body); background: var(--chipbg); color: var(--muted); }
+.chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); } .chip.pink { color: var(--pink); } .chip.teal { color: var(--teal); }
+.chip.ex { color: var(--sun); }
+
+.alerts { display: flex; flex-direction: column; gap: 6px; }
+.alert { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--panel2); }
+.alert .chip { flex: none; }
+
+.checks { display: flex; flex-direction: column; gap: 4px; }
+.checks label { display: flex; gap: 10px; align-items: flex-start; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+.checks label:hover { background: var(--panel2); }
+.checks input { margin-top: 3px; accent-color: var(--pink); }
+.checks .done span { color: var(--muted); text-decoration: line-through; }
+.sched { display: grid; grid-template-columns: 90px 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.sched > div { padding: 8px 10px; border-bottom: 1px solid var(--line); min-width: 0; }
+.sched .h { background: var(--panel2); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.sched .when { font-weight: 700; }
+@media (max-width: 560px) { .sched { grid-template-columns: 1fr; } .sched .h:not(:first-child) { display: none; } .sched .who::before { content: attr(data-who) " · "; color: var(--muted); font-size: 11px; text-transform: uppercase; } }
+
+.banner { padding: 10px 14px; border-radius: 10px; border: 1px dashed var(--sun); color: var(--fg); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+
+/* modal */
+.overlay { position: fixed; inset: 0; background: rgba(8, 6, 20, .6); z-index: 20; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: max(24px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 24px max(12px, env(safe-area-inset-left, 0px)); }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(760px, 100%); padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.form .full { grid-column: 1 / -1; }
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); min-width: 0; }
+input, select, textarea { font: 14px var(--f-body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; width: 100%; min-width: 0; }
+input[type="checkbox"] { width: auto; flex: none; padding: 0; }
+textarea { min-height: 80px; resize: vertical; }
+textarea.big { min-height: 260px; font-family: var(--f-mono); font-size: 13px; }
+.err { color: var(--bad); font-weight: 600; }
+pre.cmd { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--f-mono); white-space: pre-wrap; word-break: break-all; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-weight: 600; z-index: 30; }
+.calc { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.hookcard { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.hookcard:last-child { border-bottom: 0; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>GTA VI <span>Clip Engine</span></h1>
+      <span class="countdown" id="countdown"></span>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap" id="view"></main>
+<div id="modalRoot"></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- constants from the operator prompt ---------- */
+const STORE_KEY = "gta6-clip-engine-v1";
+const PILLARS = ["Streamer reactions", "Chaos and fails", "Hidden details", "Firsts", "Comparisons", "Hot takes"];
+const PLATFORMS = ["TikTok", "Instagram Reels", "YouTube Shorts"];
+const SRC_PLATFORMS = ["Twitch", "Kick", "YouTube", "X", "Reddit", "Rockstar official", "Other"];
+const CLIP_STATUS = ["logged", "downloaded", "cut", "review", "approved", "posted", "killed"];
+const TRANSFORM = [
+  "Our own hook, written for this moment",
+  "Cut tight to the moment with our own pacing, no dead air",
+  "Context captions that say who it is and why it matters",
+  "Combines sources: streamer cam plus gameplay, or two reactions side by side",
+  "Our own framing: layout, zoom, a freeze frame on the punchline",
+  "No foreign watermarks, logos or other clippers' text left in frame",
+  "Crop/scale 1080x1920, subtitles big, 2-4 words per line, inside safe zone",
+  "Hook text on screen for the first 2 seconds",
+];
+const EXPORT_SPECS = [
+  ["TikTok", "9:16", "1080×1920", "15 to 45s", "Text out of the bottom 20% and right edge"],
+  ["Reels", "9:16", "1080×1920", "15 to 60s", "Same safe zones, hook on the cover"],
+  ["Shorts", "9:16", "1080×1920", "15 to 60s", "Under 3 min counts as a Short"],
+];
+const DEFAULT_HOOKS = [
+  ["[STREAMER] was not ready for this", "Streamer reactions"],
+  ["The first 10 minutes of GTA VI broke [STREAMER]", "Firsts"],
+  ["Everyone missed this detail in [PLACE]", "Hidden details"],
+  ["[STREAMER] found this on day one", "Firsts"],
+  ["GTA VI cops are on another level", "Chaos and fails"],
+  ["Watch his face at the end", "Streamer reactions"],
+  ["[STREAMER] and [STREAMER2], same mission, opposite reactions", "Comparisons"],
+];
+const SCHEDULE = [
+  ["Morning", "Trend scan: top GTA moments of the last 12 hours, campaign budgets and rule changes, today's clip list", "Read the plan, 5 min"],
+  ["Midday", "Cut and caption batch 1, queue for review", "Review, post batch 1"],
+  ["Afternoon", "Batch 2 from live streams", "Post batch 2, reply to comments"],
+  ["Evening", "Batch 3, update the scoreboard, flag submissions due", "Post batch 3, paste view counts"],
+  ["Night", "Report: posted, top clip, payouts pending, tomorrow's plan", "Read it"],
+];
+const KICKOFF = [
+  "Intake questions, plan, install tools (yt-dlp, ffmpeg, Whisper), build folders, set routines",
+  "Phone 1 setup, accounts created, warmup starts. Build the campaign list",
+  "Watchlist and hook bank. Cut 10 test clips from older GTA streams for review",
+  "Warmup ends. Fix the template from review. Write the first week's clip list",
+  "First posts, 3 per account. Scoreboard starts",
+  "Full schedule. First submissions for clips over min views",
+  "First review: top and bottom clips, best pillar, best campaign, plan for week 2",
+];
+const LAUNCH_BEFORE = [
+  "Build the watchlist: top 30 streamers going live at launch, start times in my timezone",
+  "Write 20 hooks and caption shells per pillar in advance",
+  "Confirm every account finished warmup and every campaign is joined and logged",
+  "Test the full cut-to-export pipeline on an old GTA V stream",
+];
+const LAUNCH_NIGHT = [
+  "First post: a streamer's reaction to the opening, not the cutscene itself",
+  "Watch the 5 biggest streams, log every big reaction with its timestamp",
+  "Cut fast: clips live within 30 to 60 minutes of the moment",
+  "Spread across accounts so every page posts its own pillar",
+];
+
+/* ---------- tiny helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const money = (v) => v == null ? "—" : "$" + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const int = (v) => v == null || v === "" ? "—" : Math.round(Number(v)).toLocaleString();
+const uid = () => Math.random().toString(36).slice(2, 10);
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 86400000);
+const slug = (s) => String(s || "x").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "x";
+const median = (arr) => { const a = arr.filter((x) => x != null).sort((x, y) => x - y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+const yes = (v) => v === "y" || v === "yes" || v === true;
+
+function toast(msg) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 1800);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("Copied"); }
+  catch { openModal(`<h2>Copy this</h2><textarea class="big" id="copyFallback" readonly>${esc(text)}</textarea><div class="row"><button data-close>Close</button></div>`); const ta = $("#copyFallback"); ta.focus(); ta.select(); }
+}
+function download(name, text, type = "text/plain") {
+  try {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  } catch { copyText(text); }
+}
+
+/* ---------- state ---------- */
+const DEFAULT_SETTINGS = {
+  target_month: 2000, weeks: 8, timezone: "", default_views: 3000, kill_median_views: 1000,
+  min_per_hour: 15, clips_per_account_day: 3, launch_date: "2026-11-19", kickoff_start: todayISO(), hours_week: "",
+};
+function blank() {
+  return { settings: { ...DEFAULT_SETTINGS }, campaigns: [], clips: [], posts: [], submissions: [], accounts: [], watchlist: [], hooks: [], notes: { ideas: "", learnings: "", playbook: "" }, checks: {}, seeded: false };
+}
+function seed(s) {
+  const d = todayISO();
+  const ex = (o) => ({ id: uid(), _ex: true, ...o });
+  s.hooks = DEFAULT_HOOKS.map(([text, pillar]) => ({ id: uid(), text, pillar, type: "reaction" }));
+  s.campaigns = [
+    ex({ campaign: "Example: Launch reactions", site: "Whop Content Rewards", brand: "Example energy drink", cpm: 1.5, min_views: 1000, cap_per_clip: 150, budget_left: 4200, allowed_sources: "Any GTA VI streamer with credit", platforms: "TikTok, Reels, Shorts", required_tags: "#ad #GTA6", disclosure: "Paid partnership label on", submit_method: "Post link in dashboard within 7 days", deadline: "2026-12-15", checked: d, status: "active", notes: "" }),
+    ex({ campaign: "Example: Streamer clip program", site: "Clipster", brand: "Example streamer", cpm: 0.8, min_views: 5000, cap_per_clip: 80, budget_left: 900, allowed_sources: "This streamer's VODs only", platforms: "TikTok, Shorts", required_tags: "@streamer link in bio", disclosure: "", submit_method: "Form", deadline: "2026-12-01", checked: d, status: "active", notes: "" }),
+  ];
+  s.accounts = [
+    ex({ platform: "TikTok", handle: "@example.leonida.clips", device: "Phone 1", created: d, warmup: "warming", angle: "Streamer reactions", notes: "" }),
+    ex({ platform: "YouTube Shorts", handle: "@example-vice-moments", device: "Phone 1", created: d, warmup: "warming", angle: "Hidden details", notes: "" }),
+  ];
+  s.watchlist = [ex({ streamer: "Example streamer", platform: "Twitch", url: "", schedule: "Launch night 6pm", tz: "ET", allowed: "y", notes: "Big reactions, credit required" })];
+  s.posts = [
+    ex({ date: d, platform: "TikTok", account: "@example.leonida.clips", campaign: "Example: Launch reactions", cpm: "", pillar: "Streamer reactions", streamer: "Example streamer", hook_type: "reaction", length_sec: 24, views_24h: 4200, views_72h: 9100, views_7d: "", submitted: "n", paid: "n", url: "", notes: "" }),
+    ex({ date: d, platform: "YouTube Shorts", account: "@example-vice-moments", campaign: "Example: Streamer clip program", cpm: "", pillar: "Hidden details", streamer: "Example streamer", hook_type: "detail", length_sec: 38, views_24h: 1300, views_72h: "", views_7d: "", submitted: "n", paid: "n", url: "", notes: "" }),
+  ];
+  s.clips = [ex({ date: d, source_url: "https://www.twitch.tv/videos/000000000", streamer: "Example streamer", src_platform: "Twitch", start: "01:12:30", end: "01:13:05", pillar: "Streamer reactions", campaign: "Example: Launch reactions", account: "@example.leonida.clips", hook: "[STREAMER] was not ready for this", layout: "split", cam: "480:270:1440:0", status: "review", checklist: {}, notes: "" })];
+  s.seeded = true;
+  return s;
+}
+function load() {
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const s = JSON.parse(raw); const b = blank(); return { ...b, ...s, settings: { ...b.settings, ...s.settings }, notes: { ...b.notes, ...s.notes } }; } } catch {}
+  return seed(blank());
+}
+let S = load();
+let storageOk = true;
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); storageOk = true; } catch { storageOk = false; } }
+save();
+
+/* ---------- money logic ---------- */
+const campaignBy = (name) => S.campaigns.find((c) => c.campaign === name);
+const postViews = (p) => num(p.views_7d) ?? num(p.views_72h) ?? num(p.views_24h);
+function postEst(p) {
+  const c = campaignBy(p.campaign) || {};
+  const cpm = num(p.cpm) ?? num(c.cpm) ?? 0;
+  const min = num(c.min_views) ?? 0;
+  const cap = num(c.cap_per_clip);
+  const v = postViews(p);
+  if (v == null) return { v, met: false, capped: false, est: null };
+  const met = v >= min;
+  const raw = (v / 1000) * cpm;
+  const capped = met && cap != null && raw > cap;
+  return { v, met, capped, est: met ? (cap != null ? Math.min(raw, cap) : raw) : 0 };
+}
+function likelyViews(c) {
+  const own = S.posts.filter((p) => p.campaign === c.campaign).map(postViews);
+  const m = median(own) ?? median(S.posts.map(postViews));
+  return m ?? num(S.settings.default_views) ?? 3000;
+}
+function campaignEV(c) {
+  const lv = likelyViews(c);
+  const min = num(c.min_views) ?? 0;
+  if (c.status === "ended") return { lv, ev: 0 };
+  if (lv < min) return { lv, ev: 0 };
+  let ev = (lv / 1000) * (num(c.cpm) ?? 0);
+  if (num(c.cap_per_clip) != null) ev = Math.min(ev, num(c.cap_per_clip));
+  if (num(c.budget_left) != null) ev = Math.min(ev, Math.max(0, num(c.budget_left)));
+  return { lv, ev };
+}
+
+/* ---------- schemas ---------- */
+const opt = (arr) => () => arr;
+const campaignNames = () => ["", ...S.campaigns.map((c) => c.campaign)];
+const accountNames = () => ["", ...S.accounts.map((a) => a.handle)];
+const YN = ["n", "y"];
+const SCHEMAS = {
+  campaigns: {
+    title: "Campaigns", file: "campaigns.csv", sortDesc: (r) => campaignEV(r).ev,
+    blurb: "Ranked by expected value per clip: CPM × likely views, limited by the per-clip cap and the budget left, zero if likely views miss the minimum. Likely views come from your own scoreboard median, then the default in Setup. Recheck every active campaign daily; stop posting the day a budget hits zero.",
+    fields: [
+      ["campaign", "Campaign name", "text"], ["site", "Site", "text"], ["brand", "Brand", "text"],
+      ["cpm", "CPM ($ per 1,000 views)", "number"], ["min_views", "Min views before it pays", "number"], ["cap_per_clip", "Cap per clip ($)", "number"],
+      ["budget_left", "Budget left ($)", "number"], ["deadline", "Deadline", "date"], ["checked", "Last checked", "date"],
+      ["status", "Status", "select", opt(["active", "paused", "ended"])],
+      ["allowed_sources", "Allowed sources", "textarea"], ["platforms", "Platforms", "text"],
+      ["required_tags", "Required tags / links", "text"], ["disclosure", "Disclosure / partnership label", "text"],
+      ["submit_method", "Submission method and review time", "text"], ["notes", "Notes", "textarea"],
+    ],
+    cols: [
+      ["campaign", "Campaign"], ["site", "Site"],
+      [(r) => { const e = campaignEV(r); return `<b class="mono">${money(e.ev)}</b>`; }, "EV / clip", "num"],
+      [(r) => int(campaignEV(r).lv), "Likely views", "num"],
+      [(r) => money(num(r.cpm)), "CPM", "num"], [(r) => int(r.min_views), "Min views", "num"],
+      [(r) => money(num(r.cap_per_clip)), "Cap", "num"], [(r) => money(num(r.budget_left)), "Budget left", "num"],
+      [(r) => statusChip(campaignState(r)), "State"], ["deadline", "Deadline"], ["required_tags", "Required"],
+    ],
+  },
+  clips: {
+    title: "Clips", file: "clips.csv", sortDesc: (r) => r.date + (r.start || ""),
+    blurb: "Log the source URL, streamer and timestamp before downloading. A clip can't move to approved or posted until every item on the transformation checklist is ticked. Use Tools for the yt-dlp, Whisper and ffmpeg commands, the export filename and the caption.",
+    fields: [
+      ["date", "Date", "date"], ["streamer", "Streamer", "text"], ["src_platform", "Source platform", "select", opt(SRC_PLATFORMS)],
+      ["source_url", "Source URL (VOD / clip)", "url", null, "full"], ["start", "Start (hh:mm:ss)", "text"], ["end", "End (hh:mm:ss)", "text"],
+      ["pillar", "Pillar", "select", opt(PILLARS)], ["campaign", "Target campaign", "select", campaignNames], ["account", "Account", "select", accountNames],
+      ["hook", "Hook", "text", null, "full"], ["layout", "Layout", "select", opt(["split", "full"])], ["cam", "Facecam crop w:h:x:y (split layout)", "text"],
+      ["status", "Status", "select", opt(CLIP_STATUS)], ["notes", "Notes", "textarea"],
+    ],
+    cols: [
+      ["date", "Date"], ["streamer", "Streamer"], [(r) => `${esc(r.start || "")}–${esc(r.end || "")}`, "Moment", "", true], ["pillar", "Pillar"],
+      [(r) => statusChip(r.status), "Status", "", true], [(r) => checklistChip(r), "Checklist", "", true], ["campaign", "Campaign"], ["account", "Account"],
+      [(r) => `<span class="mono small">${esc(clipFilename(r))}</span>`, "Export file", "", true],
+    ],
+    extraActions: (r) => `<button class="sm" data-act="tools" data-id="${r.id}">Tools</button>`,
+  },
+  posts: {
+    title: "Scoreboard", file: "scoreboard.csv", sortDesc: (r) => r.date,
+    blurb: "One row per post. Read views at 24h, 72h and 7 days; leave missing numbers blank, never estimated. Estimated payout = views ÷ 1,000 × CPM, limited by the cap, and only if min views are met. CPM falls back to the campaign's.",
+    fields: [
+      ["date", "Date", "date"], ["platform", "Platform", "select", opt(PLATFORMS)], ["account", "Account", "select", accountNames],
+      ["campaign", "Campaign", "select", campaignNames], ["cpm", "CPM override", "number"], ["pillar", "Pillar", "select", opt(PILLARS)],
+      ["streamer", "Streamer", "text"], ["hook_type", "Hook type", "text"], ["length_sec", "Length (s)", "number"],
+      ["views_24h", "Views 24h", "number"], ["views_72h", "Views 72h", "number"], ["views_7d", "Views 7d", "number"],
+      ["submitted", "Submitted", "select", opt(YN)], ["paid", "Paid", "select", opt(YN)], ["url", "Post URL", "url", null, "full"], ["notes", "Notes", "textarea"],
+    ],
+    cols: [
+      ["date", "Date"], ["platform", "Platform"], ["account", "Account"], ["campaign", "Campaign"], ["pillar", "Pillar"],
+      [(r) => int(r.views_24h), "24h", "num"], [(r) => int(r.views_72h), "72h", "num"], [(r) => int(r.views_7d), "7d", "num"],
+      [(r) => { const e = postEst(r); return e.v == null ? `<span class="chip">no views yet</span>` : e.met ? `<span class="chip good">met</span>` : `<span class="chip">below</span>`; }, "Min views", "", true],
+      [(r) => { const e = postEst(r); return money(e.est) + (e.capped ? ` <span class="chip warn">capped</span>` : ""); }, "Est. payout", "num", true],
+      [(r) => yes(r.submitted) ? `<span class="chip teal">submitted</span>` : postEst(r).met ? `<span class="chip pink">submit now</span>` : "—", "Submit", "", true],
+      [(r) => yes(r.paid) ? `<span class="chip good">paid</span>` : "—", "Paid", "", true],
+    ],
+  },
+  submissions: {
+    title: "Submissions", file: "submissions.csv", sortDesc: (r) => r.date_submitted,
+    blurb: "Track every payout submission. Late means approved, unpaid, and the payout date has passed.",
+    fields: [
+      ["post_url", "Post link", "url", null, "full"], ["campaign", "Campaign", "select", campaignNames], ["date_submitted", "Date submitted", "date"],
+      ["status", "Status", "select", opt(["pending", "approved", "rejected"])], ["amount", "Amount ($)", "number"], ["payout_date", "Payout date", "date"],
+      ["paid", "Paid", "select", opt(YN)], ["reason", "Reason (if rejected)", "textarea"],
+    ],
+    cols: [
+      ["date_submitted", "Submitted"], ["campaign", "Campaign"],
+      [(r) => statusChip(isLate(r) ? "late" : r.status), "Status", "", true], [(r) => money(num(r.amount)), "Amount", "num"],
+      ["payout_date", "Payout date"], [(r) => yes(r.paid) ? `<span class="chip good">paid</span>` : "—", "Paid", "", true],
+      [(r) => r.post_url ? `<a href="${esc(r.post_url)}" target="_blank" rel="noopener">link</a>` : "—", "Post", "", true], ["reason", "Reason"],
+    ],
+  },
+  accounts: {
+    title: "Accounts", file: "accounts.csv", sortDesc: (r) => r.created,
+    blurb: "Handles, platform, device and warmup status. Never store passwords, codes or 2FA here: this app has no field for them on purpose.",
+    fields: [
+      ["platform", "Platform", "select", opt(PLATFORMS)], ["handle", "Handle", "text"], ["device", "Phone / device", "text"],
+      ["created", "Created", "date"], ["warmup", "Warmup", "select", opt(["warming", "ready", "paused"])], ["angle", "Page angle (pillar)", "select", opt(["", ...PILLARS])],
+      ["notes", "Notes", "textarea"],
+    ],
+    cols: [["platform", "Platform"], ["handle", "Handle"], ["device", "Device"], ["created", "Created"],
+      [(r) => statusChip(r.warmup), "Warmup", "", true], ["angle", "Angle"],
+      [(r) => { const m = median(S.posts.filter((p) => p.account === r.handle).map(postViews)); return int(m); }, "Median views", "num"]],
+  },
+  watchlist: {
+    title: "Watchlist", file: "watchlist.csv", sortDesc: (r) => r.streamer,
+    blurb: "The biggest GTA streamers and RP servers, with schedules in your timezone. Only clip sources a campaign allows, and always credit the streamer.",
+    fields: [["streamer", "Streamer / channel", "text"], ["platform", "Platform", "select", opt(SRC_PLATFORMS)], ["url", "Channel URL", "url"],
+      ["schedule", "Schedule (your time)", "text"], ["tz", "Their timezone", "text"], ["allowed", "Campaign-allowed source", "select", opt(["y", "n", "check"])], ["notes", "Notes", "textarea"]],
+    cols: [["streamer", "Streamer"], ["platform", "Platform"], ["schedule", "Schedule"], ["tz", "TZ"],
+      [(r) => statusChip(r.allowed === "y" ? "allowed" : r.allowed === "n" ? "not allowed" : "check"), "Allowed", "", true],
+      [(r) => r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">open</a>` : "—", "Link", "", true], ["notes", "Notes"]],
+  },
+};
+
+function statusChip(s) {
+  const map = { active: "good", ready: "good", approved: "good", posted: "teal", allowed: "good", paid: "good",
+    paused: "warn", warming: "warn", review: "pink", pending: "warn", check: "warn", "low budget": "warn", "recheck": "warn",
+    ended: "bad", killed: "bad", rejected: "bad", late: "bad", "not allowed": "bad", "out of budget": "bad", "past deadline": "bad" };
+  return s ? `<span class="chip ${map[s] || ""}">${esc(s)}</span>` : "—";
+}
+function campaignState(c) {
+  if (c.status !== "active") return c.status;
+  if (num(c.budget_left) != null && num(c.budget_left) <= 0) return "out of budget";
+  if (c.deadline && c.deadline < todayISO()) return "past deadline";
+  if (!c.checked || daysBetween(c.checked, todayISO()) >= 1) return "recheck";
+  if (num(c.budget_left) != null && num(c.cap_per_clip) != null && num(c.budget_left) < num(c.cap_per_clip) * 5) return "low budget";
+  return "active";
+}
+const checklistDone = (r) => TRANSFORM.filter((_, i) => r.checklist && r.checklist[i]).length;
+function checklistChip(r) { const n = checklistDone(r); return `<span class="chip ${n === TRANSFORM.length ? "good" : "warn"}">${n}/${TRANSFORM.length}</span>`; }
+function isLate(r) { return r.status === "approved" && !yes(r.paid) && r.payout_date && r.payout_date < todayISO(); }
+function clipFilename(r) {
+  const same = S.clips.filter((c) => c.date === r.date && c.pillar === r.pillar && c.streamer === r.streamer);
+  const n = Math.max(1, same.findIndex((c) => c.id === r.id) + 1);
+  return `${r.date || "date"}_${slug(r.pillar)}_${slug(r.streamer)}_${n}.mp4`;
+}
+
+/* ---------- alerts ---------- */
+function alerts() {
+  const out = [];
+  for (const c of S.campaigns) {
+    const st = campaignState(c);
+    if (st === "out of budget") out.push(["bad", "Stop posting", `${c.campaign}: budget is spent.`]);
+    else if (st === "past deadline") out.push(["bad", "Ended", `${c.campaign}: deadline ${c.deadline} has passed.`]);
+    else if (st === "recheck") out.push(["warn", "Recheck", `${c.campaign}: rules and budget not checked today.`]);
+    else if (st === "low budget") out.push(["warn", "Low budget", `${c.campaign}: ${money(num(c.budget_left))} left, under 5 capped clips.`]);
+  }
+  for (const p of S.posts) if (postEst(p).met && !yes(p.submitted)) out.push(["pink", "Submit", `${p.account || "post"} on ${p.date}: passed min views for ${p.campaign || "a campaign"} (${money(postEst(p).est)}).`]);
+  for (const s of S.submissions) if (isLate(s)) out.push(["bad", "Payout late", `${s.campaign}: approved, due ${s.payout_date}, not paid.`]);
+  const review = S.clips.filter((c) => c.status === "review").length;
+  if (review) out.push(["pink", "Review", `${review} clip${review > 1 ? "s" : ""} waiting for your review.`]);
+  for (const a of S.accounts) if (a.warmup === "warming" && a.created && daysBetween(a.created, todayISO()) >= 3) out.push(["warn", "Warmup", `${a.handle}: 3+ days warming. Mark ready when done.`]);
+  return out;
+}
+
+/* ---------- routing ---------- */
+const TABS = [["today", "Today"], ["campaigns", "Campaigns"], ["clips", "Clips"], ["scoreboard", "Scoreboard"], ["submissions", "Submissions"],
+  ["accounts", "Accounts"], ["watchlist", "Watchlist"], ["hooks", "Hooks"], ["insights", "Insights"], ["notes", "Notes"], ["setup", "Setup"]];
+const TAB_TO_SCHEMA = { campaigns: "campaigns", clips: "clips", scoreboard: "posts", submissions: "submissions", accounts: "accounts", watchlist: "watchlist" };
+let tab = "today";
+function route() {
+  const h = (location.hash || "").slice(1);
+  tab = TABS.some(([k]) => k === h) ? h : "today";
+  render();
+}
+window.addEventListener("hashchange", route);
+
+function render() {
+  $("#tabs").innerHTML = TABS.map(([k, l]) => `<a href="#${k}" class="${k === tab ? "on" : ""}">${l}</a>`).join("");
+  const v = $("#view");
+  const exBanner = S.campaigns.concat(S.posts, S.clips, S.accounts, S.watchlist).some((r) => r._ex)
+    ? `<div class="banner"><span><span class="chip ex">Example data</span> Rows marked with an orange edge are samples so you can see how it works. They are not your numbers.</span><button data-act="clear-ex">Clear examples</button></div>` : "";
+  const storeWarn = storageOk ? "" : `<div class="banner"><span class="err">This browser is blocking storage, so changes will be lost when you close the page. Use Setup → Back up to keep a copy.</span></div>`;
+  let body = "";
+  if (tab === "today") body = viewToday();
+  else if (TAB_TO_SCHEMA[tab]) body = viewTable(TAB_TO_SCHEMA[tab]);
+  else if (tab === "hooks") body = viewHooks();
+  else if (tab === "insights") body = viewInsights();
+  else if (tab === "notes") body = viewNotes();
+  else if (tab === "setup") body = viewSetup();
+  v.innerHTML = storeWarn + exBanner + body;
+  updateCountdown();
+}
+
+function updateCountdown() {
+  const ld = S.settings.launch_date;
+  const el = $("#countdown");
+  if (!ld) { el.textContent = ""; return; }
+  const diff = daysBetween(todayISO(), ld);
+  el.textContent = diff > 1 ? `Launch in ${diff} days` : diff === 1 ? "Launch tomorrow" : diff === 0 ? "Launch day" : `Launch day +${-diff}`;
+}
+
+/* ---------- checks (per-day and persistent) ---------- */
+function checkList(group, items, key) {
+  return `<div class="checks">${items.map((t, i) => {
+    const k = `${key}:${i}`; const on = !!S.checks[k];
+    return `<label class="${on ? "done" : ""}"><input type="checkbox" data-check="${esc(k)}" ${on ? "checked" : ""}><span>${esc(t)}</span></label>`;
+  }).join("")}</div>`;
+}
+
+/* ---------- views ---------- */
+function monthStats() {
+  const m = todayISO().slice(0, 7);
+  const paid = S.submissions.filter((s) => yes(s.paid) && (s.payout_date || s.date_submitted || "").startsWith(m)).reduce((a, s) => a + (num(s.amount) || 0), 0);
+  const pending = S.submissions.filter((s) => s.status !== "rejected" && !yes(s.paid)).reduce((a, s) => a + (num(s.amount) || 0), 0);
+  const unsubmitted = S.posts.filter((p) => !yes(p.submitted)).reduce((a, p) => a + (postEst(p).est || 0), 0);
+  return { paid, pending, unsubmitted };
+}
+function viewToday() {
+  const t = todayISO();
+  const st = monthStats();
+  const target = num(S.settings.target_month) || 0;
+  const pct = target ? Math.min(100, (st.paid / target) * 100) : 0;
+  const postsToday = S.posts.filter((p) => p.date === t).length;
+  const readyAccts = S.accounts.filter((a) => a.warmup === "ready").length;
+  const goal = readyAccts * (num(S.settings.clips_per_account_day) || 3);
+  const al = alerts();
+  const kickDay = S.settings.kickoff_start ? daysBetween(S.settings.kickoff_start, t) + 1 : null;
+  const ld = S.settings.launch_date; const sinceLaunch = ld ? daysBetween(ld, t) : null;
+
+  let launch = "";
+  if (sinceLaunch != null && sinceLaunch < 0) launch = `<div class="panel"><div class="row spread"><h3>Before launch</h3><span class="chip pink">${-sinceLaunch} day${sinceLaunch === -1 ? "" : "s"} out</span></div>${checkList("launch", LAUNCH_BEFORE, "launch-before")}</div>`;
+  else if (sinceLaunch === 0) launch = `<div class="panel"><div class="row spread"><h3>Launch night</h3><span class="chip pink">today</span></div>${checkList("launch", LAUNCH_NIGHT, "launch-night")}</div>`;
+  else if (sinceLaunch != null && sinceLaunch <= 6) launch = `<div class="panel"><div class="row spread"><h3>Launch week, day ${sinceLaunch + 1}</h3></div><ul class="stack" style="margin:0;padding-left:18px;gap:4px"><li>Move to firsts, hidden details, chaos and comparisons as players explore</li><li>Double down on whatever pillar wins the first 48 hours</li><li>Check campaign budgets every few hours. Launch week budgets drain fast</li></ul></div>`;
+
+  return `
+  <div class="row spread"><h2>Today · ${esc(new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }))}</h2>
+    <div class="row"><button class="primary" data-act="add" data-schema="clips">Log a clip</button><button data-act="add" data-schema="posts">Log a post</button></div></div>
+  <div class="kpis">
+    <div class="kpi"><span class="small muted">Paid this month</span><b>${money(st.paid)}</b><span class="small muted">of ${money(target)} target</span><div class="bar"><i style="width:${pct}%"></i></div></div>
+    <div class="kpi"><span class="small muted">Pending payouts</span><b>${money(st.pending)}</b><span class="small muted">submitted, not paid</span></div>
+    <div class="kpi"><span class="small muted">Not yet submitted</span><b>${money(st.unsubmitted)}</b><span class="small muted">estimated, from scoreboard</span></div>
+    <div class="kpi"><span class="small muted">Posts today</span><b>${postsToday}${goal ? ` / ${goal}` : ""}</b><span class="small muted">${readyAccts} ready account${readyAccts === 1 ? "" : "s"} × ${esc(S.settings.clips_per_account_day)}/day</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="row spread"><h3>Needs attention</h3><span class="chip">${al.length}</span></div>
+      ${al.length ? `<div class="alerts">${al.map(([c, l, m]) => `<div class="alert"><span class="chip ${c}">${esc(l)}</span><span>${esc(m)}</span></div>`).join("")}</div>` : `<p class="muted">Nothing flagged. Campaigns checked, submissions current.</p>`}
+    </div>
+    ${launch || `<div class="panel"><h3>Export specs</h3>${specsTable()}</div>`}
+  </div>
+  <div class="panel"><div class="row spread"><h3>Daily schedule${S.settings.timezone ? ` (${esc(S.settings.timezone)})` : ""}</h3><span class="small muted">3 clips per account per day, 3–4 hours apart. Never the same clip on two accounts of the same platform.</span></div>
+    <div class="sched"><div class="h">When</div><div class="h">Engine</div><div class="h">Me</div>
+    ${SCHEDULE.map(([w, a, b], i) => {
+      const k1 = `day:${t}:${i}:a`, k2 = `day:${t}:${i}:b`;
+      return `<div class="when">${w}</div>
+      <div class="who checks" data-who="Engine"><label class="${S.checks[k1] ? "done" : ""}"><input type="checkbox" data-check="${k1}" ${S.checks[k1] ? "checked" : ""}><span>${esc(a)}</span></label></div>
+      <div class="who checks" data-who="Me"><label class="${S.checks[k2] ? "done" : ""}"><input type="checkbox" data-check="${k2}" ${S.checks[k2] ? "checked" : ""}><span>${esc(b)}</span></label></div>`;
+    }).join("")}</div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="row spread"><h3>7 day kickoff</h3>${kickDay && kickDay >= 1 && kickDay <= 7 ? `<span class="chip pink">Day ${kickDay}</span>` : kickDay > 7 ? `<span class="chip good">done</span>` : ""}</div>
+      <div class="checks">${KICKOFF.map((txt, i) => { const k = `kick:${i}`; const on = !!S.checks[k]; return `<label class="${on ? "done" : ""}"><input type="checkbox" data-check="${k}" ${on ? "checked" : ""}><span><b>Day ${i + 1}${kickDay === i + 1 ? " · today" : ""}:</b> ${esc(txt)}</span></label>`; }).join("")}</div>
+    </div>
+    <div class="panel"><h3>Top campaigns by EV</h3>${miniCampaigns()}</div>
+  </div>`;
+}
+function specsTable() {
+  return `<div class="tablebox"><table><tr><th>Platform</th><th>Ratio</th><th>Size</th><th>Length</th><th>Notes</th></tr>${EXPORT_SPECS.map((r) => `<tr>${r.map((c, i) => `<td class="${i === 4 ? "wrap" : ""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</table></div><p class="small muted">All: MP4, H.264, AAC audio, 30 or 60 fps. Keep it under 60 seconds unless a campaign pays for longer.</p>`;
+}
+function miniCampaigns() {
+  const list = S.campaigns.filter((c) => c.status === "active").map((c) => ({ c, ...campaignEV(c) })).sort((a, b) => b.ev - a.ev).slice(0, 5);
+  if (!list.length) return `<p class="muted">No active campaigns. Add the ones you've joined under Campaigns.</p>`;
+  return `<div class="tablebox"><table><tr><th>Campaign</th><th class="num">EV / clip</th><th>State</th></tr>${list.map(({ c, ev }) => `<tr><td>${esc(c.campaign)}</td><td class="num">${money(ev)}</td><td>${statusChip(campaignState(c))}</td></tr>`).join("")}</table></div>`;
+}
+
+function viewTable(key) {
+  const sc = SCHEMAS[key];
+  const rows = [...S[key]].sort((a, b) => { const x = sc.sortDesc(a), y = sc.sortDesc(b); return x < y ? 1 : x > y ? -1 : 0; });
+  const head = sc.cols.map(([, l, cls]) => `<th class="${cls || ""}">${esc(l)}</th>`).join("") + "<th></th>";
+  const body = rows.map((r) => `<tr class="${r._ex ? "ex" : ""}">${sc.cols.map(([k, , cls, html]) => {
+    const v = typeof k === "function" ? k(r) : esc(r[k] ?? "");
+    return `<td class="${cls || ""}">${v === "" ? "—" : v}</td>`;
+  }).join("")}<td><div class="row" style="flex-wrap:nowrap;gap:6px">${sc.extraActions ? sc.extraActions(r) : ""}<button class="sm" data-act="edit" data-schema="${key}" data-id="${r.id}">Edit</button><button class="sm ghost danger" data-act="del" data-schema="${key}" data-id="${r.id}">Delete</button></div></td></tr>`).join("");
+  let extra = "";
+  if (key === "campaigns") extra = stackingNote();
+  return `
+  <div class="row spread"><h2>${sc.title}</h2>
+    <div class="row"><button class="primary" data-act="add" data-schema="${key}">Add</button><button data-act="csv-copy" data-schema="${key}">Copy CSV</button><button data-act="csv-dl" data-schema="${key}">Download ${sc.file}</button></div></div>
+  <p class="muted" style="max-width:80ch">${sc.blurb}</p>
+  <div class="tablebox">${rows.length ? `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` : `<div class="empty">Nothing here yet. Use Add to create the first row.</div>`}</div>
+  ${extra}`;
+}
+function stackingNote() {
+  return `<div class="panel"><h3>Rules of thumb</h3><p><b>Stacking:</b> one clip can fit more than one campaign (a streamer campaign plus a game or app campaign). Only stack when both rule pages allow it. Never submit the same clip twice to one campaign.</p><p class="small muted">Where to look: Whop Content Rewards, Clipster and similar clipping platforms, plus brand campaigns shared on X and Discord. Open the full rules page of every campaign before logging it.</p></div>`;
+}
+
+function hookUsage() {
+  const m = {};
+  for (const c of S.clips) if (c.hook) { m[c.hook] = m[c.hook] || {}; if (c.account) m[c.hook][c.account] = (m[c.hook][c.account] || 0) + 1; }
+  return m;
+}
+function viewHooks() {
+  const use = hookUsage();
+  const byPillar = PILLARS.map((p) => [p, S.hooks.filter((h) => h.pillar === p)]);
+  const other = S.hooks.filter((h) => !PILLARS.includes(h.pillar));
+  if (other.length) byPillar.push(["Other", other]);
+  return `
+  <div class="row spread"><h2>Hook bank</h2><div class="row"><button class="primary" data-act="hook-add">Add hook</button></div></div>
+  <p class="muted" style="max-width:80ch">On-screen hook for the first 2 seconds. Adapt every time and never reuse one word for word on the same account; the count shows which accounts already used each hook. Use [STREAMER], [STREAMER2] and [PLACE] as fill-ins. No hashtag spam, no fake claims, no "leaked".</p>
+  <div class="grid2">${byPillar.map(([p, hs]) => `<div class="panel"><div class="row spread"><h3>${esc(p)}</h3><span class="chip">${hs.length}</span></div>
+    ${hs.length ? hs.map((h) => { const u = use[h.text] || {}; const accts = Object.keys(u); return `<div class="hookcard"><div class="stack" style="gap:2px"><span>${esc(h.text)}</span><span class="small muted">${accts.length ? "Used on " + accts.map(esc).join(", ") : "Not used yet"}</span></div><div class="row" style="flex-wrap:nowrap;gap:6px"><button class="sm" data-act="copy-raw" data-text="${esc(h.text)}">Copy</button><button class="sm ghost danger" data-act="hook-del" data-id="${h.id}">Delete</button></div></div>`; }).join("") : `<p class="muted small">No hooks yet. Aim for 20 per pillar before launch.</p>`}
+  </div>`).join("")}</div>
+  <div class="panel"><h3>Caption template</h3><pre class="cmd">[One line that adds context or a take]
+Credit: [STREAMER] on [PLATFORM]
+[TAG OR DISCLOSURE THE CAMPAIGN REQUIRES]</pre><p class="small muted">Each account writes in its own voice so pages never look copied. Ask a question only when it starts a real argument.</p></div>`;
+}
+
+function groupStats(field, posts) {
+  const g = {};
+  for (const p of posts) { const k = (typeof field === "function" ? field(p) : p[field]) || "(blank)"; (g[k] = g[k] || []).push(p); }
+  return Object.entries(g).map(([k, ps]) => ({ k, n: ps.length, med: median(ps.map(postViews)), est: ps.reduce((a, p) => a + (postEst(p).est || 0), 0) }))
+    .sort((a, b) => (b.med ?? -1) - (a.med ?? -1));
+}
+function statTable(title, rows, killAt) {
+  return `<div class="panel"><h3>${esc(title)}</h3>${rows.length ? `<div class="tablebox"><table><tr><th>${esc(title.replace(/^By /, ""))}</th><th class="num">Posts</th><th class="num">Median views</th><th class="num">Est. payout</th><th></th></tr>
+  ${rows.map((r) => `<tr><td>${esc(r.k)}</td><td class="num">${r.n}</td><td class="num">${int(r.med)}</td><td class="num">${money(r.est)}</td><td>${killAt != null && r.n >= 3 && r.med != null && r.med < killAt ? `<span class="chip bad">kill?</span>` : r === rows[0] && r.med != null ? `<span class="chip good">best</span>` : ""}</td></tr>`).join("")}</table></div>` : `<p class="muted">No posts logged yet.</p>`}</div>`;
+}
+function viewInsights() {
+  const posts = S.posts.filter((p) => postViews(p) != null);
+  const kill = num(S.settings.kill_median_views);
+  const sorted = [...posts].sort((a, b) => postViews(b) - postViews(a));
+  const top = sorted.slice(0, 5), bottom = sorted.slice(-5).reverse();
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const weekEst = S.posts.filter((p) => p.date >= weekAgo).reduce((a, p) => a + (postEst(p).est || 0), 0);
+  const hrs = num(S.settings.hours_week);
+  const perHr = hrs ? weekEst / hrs : null;
+  const minHr = num(S.settings.min_per_hour);
+  const line = (p) => `<tr><td>${esc(p.date)}</td><td>${esc(p.account)}</td><td>${esc(p.pillar)}</td><td>${esc(p.hook_type)}</td><td class="num">${int(postViews(p))}</td><td class="num">${money(postEst(p).est)}</td></tr>`;
+  const tbl = (rows) => rows.length ? `<div class="tablebox"><table><tr><th>Date</th><th>Account</th><th>Pillar</th><th>Hook</th><th class="num">Views</th><th class="num">Est.</th></tr>${rows.map(line).join("")}</table></div>` : `<p class="muted">No posts with views yet.</p>`;
+  return `
+  <h2>Insights</h2>
+  <p class="muted" style="max-width:80ch">The weekly review. Kill hooks or pillars under the median for 2 weeks, accounts under ${int(kill)} median views after 3 weeks of good clips, and campaigns paying under ${money(minHr)} an hour. Write what wins into Notes → Learnings. One test per week: change one thing and compare.</p>
+  <div class="kpis">
+    <div class="kpi"><span class="small muted">Est. payout, last 7 days</span><b>${money(weekEst)}</b></div>
+    <div class="kpi"><span class="small muted">Hours worked this week</span><input id="hoursWeek" type="number" min="0" step="0.5" value="${esc(S.settings.hours_week)}" placeholder="e.g. 20"></div>
+    <div class="kpi"><span class="small muted">Payout per hour</span><b>${perHr == null ? "—" : money(perHr)}</b>${perHr != null && minHr != null ? `<span class="chip ${perHr >= minHr ? "good" : "bad"}">${perHr >= minHr ? "above" : "below"} ${money(minHr)}/h</span>` : `<span class="small muted">enter hours</span>`}</div>
+    <div class="kpi"><span class="small muted">Posts with views</span><b>${posts.length}</b></div>
+  </div>
+  <div class="grid2">${statTable("By pillar", groupStats("pillar", posts), kill)}${statTable("By account", groupStats("account", posts), kill)}</div>
+  <div class="grid2">${statTable("By hook type", groupStats("hook_type", posts), kill)}${statTable("By campaign", groupStats("campaign", posts))}</div>
+  <div class="grid2"><div class="panel"><h3>Top 5 clips</h3>${tbl(top)}</div><div class="panel"><h3>Bottom 5 clips</h3>${tbl(posts.length > 5 ? bottom : [])}</div></div>
+  ${calcPanel()}`;
+}
+function calcPanel() {
+  return `<div class="panel"><div class="row spread"><h3>Payout math</h3><span class="small muted">A worked example, not a promise. Replace with your real numbers after week 2.</span></div>
+  <div class="calc">
+    <label class="f">Phones<input type="number" id="c_phones" value="1" min="0"></label>
+    <label class="f">Accounts per phone<input type="number" id="c_accts" value="9" min="0"></label>
+    <label class="f">Clips / account / day<input type="number" id="c_cpd" value="3" min="0"></label>
+    <label class="f">Avg paid views / clip<input type="number" id="c_views" value="3000" min="0"></label>
+    <label class="f">CPM ($)<input type="number" id="c_cpm" value="1" min="0" step="0.1"></label>
+  </div><div id="calcOut"></div>
+  <p class="small muted">Paid clipping CPMs usually run about $0.50 to $2. Clips under min views earn nothing, caps limit big hits, budgets run out and some submissions get rejected. Results vary a lot.</p></div>`;
+}
+function runCalc() {
+  const g = (id) => num($("#" + id)?.value) || 0;
+  const out = $("#calcOut"); if (!out) return;
+  const perDay = g("c_phones") * g("c_accts") * g("c_cpd");
+  const perMonth = perDay * 30; const views = perMonth * g("c_views"); const pay = (views / 1000) * g("c_cpm");
+  out.innerHTML = `<div class="tablebox"><table><tr><td>Clips per day</td><td class="num">${int(perDay)}</td></tr><tr><td>Clips per month</td><td class="num">${int(perMonth)}</td></tr><tr><td>Views per month</td><td class="num">${int(views)}</td></tr><tr><td><b>Payout per month, before caps</b></td><td class="num"><b>${money(pay)}</b></td></tr></table></div>`;
+}
+
+function viewNotes() {
+  const box = (k, t, hint) => `<div class="panel"><div class="row spread"><h3>${t}</h3><button class="sm" data-act="note-dl" data-k="${k}">Download ${k}.md</button></div><p class="small muted">${hint}</p><textarea class="big" data-note="${k}" id="note_${k}">${esc(S.notes[k])}</textarea></div>`;
+  return `<h2>Notes</h2><p class="muted">Saved as you type.</p>
+  ${box("learnings", "Learnings", "What works, what died. Read before every batch.")}
+  <div class="grid2">${box("playbook", "Playbook", "The current best workflow.")}${box("ideas", "Ideas", "Hook bank, comment ideas, good comment questions to turn into clips.")}</div>`;
+}
+
+function viewSetup() {
+  const s = S.settings;
+  const f = (k, l, t = "number", extra = "") => `<label class="f">${l}<input id="set_${k}" data-setting="${k}" type="${t}" value="${esc(s[k])}" ${extra}></label>`;
+  return `<h2>Setup</h2>
+  <div class="panel"><h3>Targets</h3><div class="form">
+    ${f("target_month", "Target $ per month")}${f("weeks", "Within (weeks)")}${f("timezone", "Your timezone", "text", 'placeholder="e.g. America/New_York"')}
+    ${f("clips_per_account_day", "Clips per account per day")}${f("default_views", "Default likely views (until you have data)")}${f("kill_median_views", "Kill: min median views per account")}
+    ${f("min_per_hour", "Kill: min $ per hour")}${f("launch_date", "GTA VI launch date", "date")}${f("kickoff_start", "7 day kickoff start", "date")}
+  </div></div>
+  <div class="panel"><h3>Rules that never change</h3><ul style="margin:0;padding-left:18px" class="stack">
+    <li>Never ask for, read or store a password, code or 2FA. This app has no field for them.</li>
+    <li>No fake news, fake leaks or made-up release info. Rumors get labelled as rumors or skipped.</li>
+    <li>No fake gameplay and no AI-generated footage passed off as real.</li>
+    <li>Follow each platform's rules and each campaign's rules. If they conflict, the stricter one wins.</li>
+    <li>Only use footage a campaign allows. Credit streamers when required. Never cut a clip so it changes what someone said.</li>
+    <li>No bought views, bots, engagement groups or follow-for-follow.</li>
+    <li>If a clip only works as a straight repost, skip it. Reused content earns nothing on any platform.</li>
+  </ul></div>
+  <div class="panel"><h3>Back up and restore</h3><p class="small muted">Your data lives in this browser only. Back it up regularly, and restore it on another device by pasting the backup below.</p>
+    <div class="row"><button data-act="backup-dl">Download backup</button><button data-act="backup-copy">Copy backup</button><button data-act="clear-ex">Clear example rows</button><button class="danger" data-act="reset">Erase everything</button></div>
+    <label class="f">Restore from backup (paste JSON)<textarea id="restoreBox" placeholder='{"settings": …}'></textarea></label>
+    <div class="row"><button data-act="restore">Restore</button><span id="restoreMsg" class="small"></span></div>
+  </div>`;
+}
+
+/* ---------- modal + forms ---------- */
+function openModal(html) { $("#modalRoot").innerHTML = `<div class="overlay" data-overlay><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`; }
+function closeModal() { $("#modalRoot").innerHTML = ""; }
+function field(k, label, type, optsFn, cls, val) {
+  const id = `fld_${k}`;
+  let input;
+  if (type === "select") input = `<select id="${id}" name="${k}">${optsFn().map((o) => `<option ${String(o) === String(val ?? "") ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  else if (type === "textarea") input = `<textarea id="${id}" name="${k}">${esc(val)}</textarea>`;
+  else input = `<input id="${id}" name="${k}" type="${type === "number" ? "number" : type}" ${type === "number" ? 'step="any"' : ""} value="${esc(val)}">`;
+  return `<label class="f ${cls || (type === "textarea" ? "full" : "")}">${esc(label)}${input}</label>`;
+}
+function openForm(key, id) {
+  const sc = SCHEMAS[key];
+  const rec = id ? S[key].find((r) => r.id === id) : null;
+  const defaults = { date: todayISO(), created: todayISO(), checked: todayISO(), date_submitted: todayISO(), status: key === "clips" ? "logged" : key === "submissions" ? "pending" : key === "campaigns" ? "active" : undefined, layout: "split", warmup: "warming", submitted: "n", paid: "n" };
+  const val = (k) => rec ? rec[k] : defaults[k] ?? "";
+  let checklist = "";
+  if (key === "clips") checklist = `<div class="full"><h3 style="margin-bottom:6px">Transformation checklist</h3><div class="checks">${TRANSFORM.map((t, i) => `<label><input type="checkbox" name="chk_${i}" ${rec && rec.checklist && rec.checklist[i] ? "checked" : ""}><span>${esc(t)}</span></label>`).join("")}</div></div>`;
+  openModal(`<div class="row spread"><h2>${rec ? "Edit" : "Add"} ${sc.title.replace(/s$/, "").toLowerCase()}</h2><button class="ghost" data-close aria-label="Close">Close</button></div>
+  <form id="recForm" class="form" data-schema="${key}" data-id="${id || ""}">
+    ${sc.fields.map(([k, l, t, o, c]) => field(k, l, t, o, c, val(k))).join("")}
+    ${checklist}
+    <div class="full row spread"><span id="formErr" class="err"></span><div class="row"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div></div>
+  </form>`);
+  $("#recForm input, #recForm select")?.focus();
+}
+function submitForm(form) {
+  const key = form.dataset.schema; const id = form.dataset.id;
+  const sc = SCHEMAS[key]; const fd = new FormData(form);
+  const rec = {};
+  for (const [k, , t] of sc.fields) { const v = fd.get(k); rec[k] = t === "number" ? (v === "" ? "" : Number(v)) : (v ?? "").toString().trim(); }
+  if (key === "clips") {
+    rec.checklist = {}; TRANSFORM.forEach((_, i) => { if (fd.get("chk_" + i)) rec.checklist[i] = true; });
+    if ((rec.status === "approved" || rec.status === "posted") && Object.keys(rec.checklist).length < TRANSFORM.length) {
+      $("#formErr").textContent = "Tick every checklist item before approving or posting. A straight repost earns nothing."; return;
+    }
+    if (rec.hook && rec.account) {
+      const dup = S.clips.find((c) => c.id !== id && c.account === rec.account && c.hook === rec.hook);
+      if (dup && !form.dataset.dupOk) { form.dataset.dupOk = "1"; $("#formErr").textContent = "This exact hook is already used on this account. Adapt the wording, or press Save again to keep it."; return; }
+    }
+  }
+  if (key === "campaigns" && !rec.campaign) { $("#formErr").textContent = "Give the campaign a name."; return; }
+  if (key === "accounts" && !rec.handle) { $("#formErr").textContent = "Add the handle."; return; }
+  if (id) { const i = S[key].findIndex((r) => r.id === id); S[key][i] = { ...S[key][i], ...rec }; }
+  else S[key].push({ id: uid(), ...rec });
+  save(); closeModal(); render(); toast("Saved");
+}
+
+/* ---------- clip tools ---------- */
+function fillHook(text, r, place) {
+  return (text || "").replace(/\[STREAMER2\]/g, r.streamer2 || "[STREAMER2]").replace(/\[STREAMER\]/g, r.streamer || "[STREAMER]").replace(/\[PLACE\]/g, place || "[PLACE]");
+}
+function ffSafe(t) { return t.replace(/\\/g, "").replace(/'/g, "’").replace(/"/g, "”").replace(/[`$]/g, "").replace(/:/g, "\\:").replace(/%/g, "\\%"); }
+function clipCommands(r, hookText) {
+  const file = clipFilename(r); const base = file.replace(/\.mp4$/, "");
+  const sect = r.start && r.end ? ` --download-sections "*${r.start}-${r.end}" --force-keyframes-at-cuts` : "";
+  const ytdlp = `yt-dlp${sect} -f "bv*+ba/b" --merge-output-format mp4 -o "raw/${base}.%(ext)s" "${r.source_url || "SOURCE_URL"}"`;
+  const whisper = `whisper "raw/${base}.mp4" --model small --language en --output_format srt --output_dir raw --max_line_width 18 --max_line_count 1 --word_timestamps True`;
+  const subs = `subtitles=raw/${base}.srt:force_style='FontName=Arial,FontSize=16,Bold=1,Outline=3,Alignment=2,MarginV=70'`;
+  const hook = hookText ? `,drawtext=text='${ffSafe(hookText)}':fontsize=58:fontcolor=white:borderw=6:bordercolor=black:x=(w-text_w)/2:y=h*0.10:enable='lt(t,2)'` : "";
+  let vf;
+  if (r.layout === "full") vf = `[0:v]crop=ih*9/16:ih,scale=1080:1920,fps=60,${subs}${hook}[v]`;
+  else {
+    const cam = (r.cam || "CAM_W:CAM_H:CAM_X:CAM_Y");
+    vf = `[0:v]crop=${cam},scale=1080:640:force_original_aspect_ratio=increase,crop=1080:640[cam];[0:v]crop=ih*27/32:ih,scale=1080:1280[game];[cam][game]vstack=inputs=2,fps=60,${subs}${hook}[v]`;
+  }
+  const ff = `ffmpeg -i "raw/${base}.mp4" -filter_complex "${vf}" -map "[v]" -map 0:a? -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -c:a aac -b:a 160k "ready/${file}"`;
+  return { file, ytdlp, whisper, ff };
+}
+function captionFor(r, take, platformCred) {
+  const c = campaignBy(r.campaign) || {};
+  const tag = [c.required_tags, c.disclosure].filter(Boolean).join(" · ");
+  return `${take || "[One line that adds context or a take]"}\nCredit: ${r.streamer || "[STREAMER]"} on ${platformCred || r.src_platform || "[PLATFORM]"}${tag ? "\n" + tag : ""}`;
+}
+function openTools(id) {
+  const r = S.clips.find((c) => c.id === id); if (!r) return;
+  const hooks = S.hooks.filter((h) => !r.pillar || h.pillar === r.pillar);
+  openModal(`<div class="row spread"><h2>Clip tools</h2><button class="ghost" data-close>Close</button></div>
+  <p class="small muted">${esc(r.streamer)} · ${esc(r.pillar)} · ${esc(r.start)}–${esc(r.end)}. Commands assume folders <span class="mono">raw/</span> and <span class="mono">ready/</span> in your gta_engine folder. Split layout: streamer cam on top third, gameplay bottom two thirds; set the facecam box (w:h:x:y in source pixels) on the clip.</p>
+  <div class="form">
+    <label class="f full">Hook on screen (first 2 seconds)<select id="t_hook"><option value="">${r.hook ? esc(r.hook) + " (from clip)" : "— pick a hook —"}</option>${hooks.map((h) => `<option>${esc(h.text)}</option>`).join("")}</select></label>
+    <label class="f">[STREAMER2] (comparisons)<input id="t_s2" placeholder="second streamer"></label>
+    <label class="f">[PLACE]<input id="t_place" placeholder="e.g. Vice City"></label>
+    <label class="f full">Caption take (one line of context or a take)<input id="t_take" placeholder="He found the hidden room before anyone else"></label>
+  </div>
+  <div id="toolsOut" class="stack" data-id="${r.id}"></div>`);
+  renderTools();
+}
+function renderTools() {
+  const out = $("#toolsOut"); if (!out) return;
+  const r = { ...S.clips.find((c) => c.id === out.dataset.id) };
+  r.streamer2 = $("#t_s2").value.trim();
+  const hookRaw = $("#t_hook").value || r.hook || "";
+  const hook = fillHook(hookRaw, r, $("#t_place").value.trim());
+  const cmds = clipCommands(r, hook);
+  const used = hookRaw && r.account && S.clips.some((c) => c.id !== r.id && c.account === r.account && c.hook === hookRaw);
+  const cap = captionFor(r, $("#t_take").value.trim());
+  const block = (t, txt) => `<div class="stack" style="gap:6px"><div class="row spread"><h3>${t}</h3><button class="sm" data-act="copy-raw" data-text="${esc(txt)}">Copy</button></div><pre class="cmd">${esc(txt)}</pre></div>`;
+  out.innerHTML = `${used ? `<div class="alert"><span class="chip bad">Reused</span><span>${esc(r.account)} already used this hook word for word. Adapt it.</span></div>` : ""}
+    ${block("Hook text", hook || "(no hook)")}${block("Caption", cap)}${block("Export filename", cmds.file)}
+    ${block("1. Download only the segment", cmds.ytdlp)}${block("2. Subtitles (Whisper)", cmds.whisper)}${block("3. Cut, layout, subtitles, hook, export", cmds.ff)}
+    <div class="row"><button data-act="set-hook" data-id="${r.id}" data-text="${esc(hookRaw)}">Save hook to clip</button><button data-act="set-status" data-id="${r.id}" data-status="review">Send to review</button></div>`;
+}
+
+/* ---------- CSV ---------- */
+function toCSV(key) {
+  const sc = SCHEMAS[key];
+  const cols = ["id", ...sc.fields.map(([k]) => k)];
+  const extra = key === "posts" ? ["views_latest", "min_views_met", "capped", "est_payout"] : key === "campaigns" ? ["likely_views", "ev_per_clip"] : key === "clips" ? ["checklist_done", "export_file"] : [];
+  const q = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [cols.concat(extra).join(",")];
+  for (const r of S[key]) {
+    let row = cols.map((c) => q(r[c]));
+    if (key === "posts") { const e = postEst(r); row = row.concat([e.v ?? "", e.met ? "y" : "n", e.capped ? "y" : "n", e.est == null ? "" : e.est.toFixed(2)]); }
+    if (key === "campaigns") { const e = campaignEV(r); row = row.concat([Math.round(e.lv), e.ev.toFixed(2)]); }
+    if (key === "clips") row = row.concat([`${checklistDone(r)}/${TRANSFORM.length}`, clipFilename(r)]);
+    lines.push(row.join(","));
+  }
+  return lines.join("\n");
+}
+
+/* ---------- events ---------- */
+let pendingDelete = null;
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-act],[data-close],[data-overlay]");
+  if (!t) return;
+  if (t.hasAttribute("data-overlay") && e.target !== t) return;
+  if (t.hasAttribute("data-close") || t.hasAttribute("data-overlay")) { closeModal(); return; }
+  const a = t.dataset.act, key = t.dataset.schema, id = t.dataset.id;
+  if (a === "add") openForm(key);
+  else if (a === "edit") openForm(key, id);
+  else if (a === "del") {
+    if (pendingDelete === id) { S[key] = S[key].filter((r) => r.id !== id); pendingDelete = null; save(); render(); toast("Deleted"); }
+    else { pendingDelete = id; t.textContent = "Confirm"; setTimeout(() => { if (pendingDelete === id) { pendingDelete = null; t.textContent = "Delete"; } }, 3000); }
+  }
+  else if (a === "tools") openTools(id);
+  else if (a === "copy-raw") copyText(t.dataset.text);
+  else if (a === "csv-copy") copyText(toCSV(key));
+  else if (a === "csv-dl") download(SCHEMAS[key].file, toCSV(key), "text/csv");
+  else if (a === "set-hook") { const c = S.clips.find((x) => x.id === id); if (c && t.dataset.text) { c.hook = t.dataset.text; save(); render(); toast("Hook saved"); } }
+  else if (a === "set-status") { const c = S.clips.find((x) => x.id === id); if (c) { c.status = t.dataset.status; save(); closeModal(); render(); toast("Sent to review"); } }
+  else if (a === "hook-add") {
+    openModal(`<div class="row spread"><h2>Add hook</h2><button class="ghost" data-close>Close</button></div><form id="hookForm" class="form">
+      <label class="f full">Hook text<input id="h_text" name="text" placeholder="[STREAMER] was not ready for this" required></label>
+      <label class="f">Pillar<select id="h_pillar" name="pillar">${PILLARS.map((p) => `<option>${p}</option>`).join("")}</select></label>
+      <label class="f">Hook type<input id="h_type" name="type" placeholder="reaction, detail, question…"></label>
+      <div class="full row" style="justify-content:flex-end"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save</button></div></form>`);
+    $("#h_text").focus();
+  }
+  else if (a === "hook-del") {
+    if (pendingDelete === id) { S.hooks = S.hooks.filter((h) => h.id !== id); pendingDelete = null; save(); render(); }
+    else { pendingDelete = id; t.textContent = "Confirm"; }
+  }
+  else if (a === "note-dl") download(`${t.dataset.k}.md`, S.notes[t.dataset.k] || "", "text/markdown");
+  else if (a === "clear-ex") {
+    for (const k of ["campaigns", "clips", "posts", "submissions", "accounts", "watchlist"]) S[k] = S[k].filter((r) => !r._ex);
+    save(); render(); toast("Examples cleared");
+  }
+  else if (a === "backup-dl") download(`gta-clip-engine-backup-${todayISO()}.json`, JSON.stringify(S, null, 2), "application/json");
+  else if (a === "backup-copy") copyText(JSON.stringify(S));
+  else if (a === "restore") {
+    const msg = $("#restoreMsg");
+    try { const d = JSON.parse($("#restoreBox").value); if (!d || typeof d !== "object" || !d.settings) throw 0; const b = blank(); S = { ...b, ...d, settings: { ...b.settings, ...d.settings }, notes: { ...b.notes, ...d.notes } }; save(); render(); toast("Restored"); }
+    catch { msg.textContent = "That isn't a backup from this app. Paste the full text from Copy backup."; msg.className = "small err"; }
+  }
+  else if (a === "reset") {
+    if (t.dataset.armed) { S = blank(); S.hooks = DEFAULT_HOOKS.map(([text, pillar]) => ({ id: uid(), text, pillar, type: "reaction" })); S.seeded = true; save(); render(); toast("Erased"); }
+    else { t.dataset.armed = "1"; t.textContent = "Press again to erase everything"; }
+  }
+});
+document.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (e.target.id === "recForm") submitForm(e.target);
+  else if (e.target.id === "hookForm") {
+    const text = $("#h_text").value.trim(); if (!text) return;
+    S.hooks.push({ id: uid(), text, pillar: $("#h_pillar").value, type: $("#h_type").value.trim() });
+    save(); closeModal(); render(); toast("Hook added");
+  }
+});
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.check) { S.checks[t.dataset.check] = t.checked; if (!t.checked) delete S.checks[t.dataset.check]; save(); t.closest("label")?.classList.toggle("done", t.checked); }
+  else if (t.dataset.setting) { S.settings[t.dataset.setting] = t.type === "number" ? (t.value === "" ? "" : Number(t.value)) : t.value; save(); updateCountdown(); toast("Saved"); }
+  else if (t.id === "hoursWeek") { S.settings.hours_week = t.value === "" ? "" : Number(t.value); save(); render(); }
+  else if (t.id === "t_hook") renderTools();
+});
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset.note) { S.notes[t.dataset.note] = t.value; save(); }
+  else if (t.id && t.id.startsWith("c_")) runCalc();
+  else if (t.id === "t_s2" || t.id === "t_place" || t.id === "t_take") renderTools();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#modalRoot").innerHTML) closeModal(); });
+
+const _render = render;
+render = function () { _render(); if (tab === "insights") runCalc(); };
+route();
+})();
+</script>
+</body>
+</html>
